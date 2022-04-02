@@ -16,12 +16,22 @@ def encode_labels(label_strings):
     return np.array(encoded_labels, dtype=np.int32)
 
 
-def build_adj_matrix(edges, num_nodes):
-    num_edges = edges.shape[0]
-    matrix_data = np.ones(num_edges, dtype=np.float32)
+def build_adj_matrix(edges, nodes_idx_map):
+    to_nodes = []
+    from_nodes = []
 
-    to_nodes = edges[:, 0]
-    from_nodes = edges[:, 1]
+    for e in edges:
+        to_node, from_node = e
+        if to_node in nodes_idx_map and from_node in nodes_idx_map:
+            to_nodes.append(nodes_idx_map[to_node])
+            from_nodes.append(nodes_idx_map[from_node])
+
+    num_edges = len(to_nodes)
+    num_nodes = len(nodes_idx_map)
+
+    matrix_data = np.ones(num_edges, dtype=np.float32)
+    to_nodes = np.array(to_nodes, dtype=np.int32)
+    from_nodes = np.array(from_nodes, dtype=np.int32)
 
     adj = sp.coo_matrix((matrix_data, (to_nodes, from_nodes)), shape=(num_nodes, num_nodes))
 
@@ -47,11 +57,37 @@ def load_cora():
     labels = encode_labels(content[:, -1])
 
     # build graph
-    num_nodes = nodes.shape[0]
-    nodes_idx_map = {j: i for i, j in enumerate(nodes)}
-    edges = np.array([nodes_idx_map[node] for node in cites.flatten()], dtype=np.int32).reshape(cites.shape)
+    nodes_idx_map = {node: i for i, node in enumerate(nodes)}
 
-    adj_mtx = build_adj_matrix(edges, num_nodes)
+    adj_mtx = build_adj_matrix(cites, nodes_idx_map)
+
+    idx_train = range(140)
+    idx_val = range(200, 500)
+    idx_test = range(500, 1500)
+
+    features = torch.FloatTensor(features)
+    labels = torch.LongTensor(labels)
+
+    idx_train = torch.LongTensor(idx_train)
+    idx_val = torch.LongTensor(idx_val)
+    idx_test = torch.LongTensor(idx_test)
+
+    return adj_mtx, features, labels, idx_train, idx_val, idx_test
+
+def load_citeseer():
+    path = './data/citeseer'
+
+    content = np.genfromtxt(f"{path}/citeseer.content", dtype=np.dtype(str))
+    cites = np.genfromtxt(f"{path}/citeseer.cites", dtype=np.dtype(str))
+
+    nodes = np.array(content[:, 0])
+    features = np.array(content[:, 1:-1], dtype=np.float32)
+    labels = encode_labels(content[:, -1])
+
+    # build graph
+    nodes_idx_map = {node: i for i, node in enumerate(nodes)}
+
+    adj_mtx = build_adj_matrix(cites, nodes_idx_map)
 
     idx_train = range(140)
     idx_val = range(200, 500)
