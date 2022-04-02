@@ -15,6 +15,13 @@ def encode_labels(label_strings):
     
     return np.array(encoded_labels, dtype=np.int32)
 
+def build_feature_matrix(content):
+    features_mtx = sp.csr_matrix(content[:, 1:-1], dtype=np.float32)
+
+    r_sum = np.array(features_mtx.sum(axis=1))
+    r_sum_mtx = r_sum * np.ones(features_mtx.shape)
+
+    return np.divide(features_mtx.todense(), r_sum_mtx)
 
 def build_adj_matrix(edges, nodes_idx_map):
     to_nodes = []
@@ -38,12 +45,7 @@ def build_adj_matrix(edges, nodes_idx_map):
     # make adjacency matrix symmetric
     sym_adj = adj + adj.T.multiply(adj.T > adj)
 
-    # conver to pytorch sparse tensor
-    sparse_mtx = sym_adj.tocoo()
-    indices = torch.from_numpy(np.array([sparse_mtx.row, sparse_mtx.col]).astype(np.int64))
-    values = torch.from_numpy(sparse_mtx.data)
-    shape = torch.Size(sparse_mtx.shape)
-    return torch.sparse.FloatTensor(indices, values, shape)
+    return sym_adj.tocoo()
 
 
 def load_cora():
@@ -53,7 +55,7 @@ def load_cora():
     cites = np.genfromtxt(f"{path}/cora.cites", dtype=np.int32)
 
     nodes = np.array(content[:, 0], dtype=np.int32)
-    features = np.array(content[:, 1:-1], dtype=np.float32)
+    features = build_feature_matrix(content)
     labels = encode_labels(content[:, -1])
 
     # build graph
@@ -80,8 +82,8 @@ def load_citeseer():
     content = np.genfromtxt(f"{path}/citeseer.content", dtype=np.dtype(str))
     cites = np.genfromtxt(f"{path}/citeseer.cites", dtype=np.dtype(str))
 
-    nodes = np.array(content[:, 0])
-    features = np.array(content[:, 1:-1], dtype=np.float32)
+    nodes = np.array(content[:, 0], dtype=np.dtype(str))
+    features = build_feature_matrix(content)
     labels = encode_labels(content[:, -1])
 
     # build graph
@@ -101,3 +103,14 @@ def load_citeseer():
     idx_test = torch.LongTensor(idx_test)
 
     return adj_mtx, features, labels, idx_train, idx_val, idx_test
+
+def load_pubmed():
+    pass
+
+def load_dataset(dataset):
+    if dataset == 'cora':
+        return load_cora()
+    elif dataset == 'citeseer':
+        return load_citeseer()
+    elif dataset == 'pubmed':
+        return load_pubmed()
