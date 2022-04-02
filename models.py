@@ -1,21 +1,25 @@
 import torch.nn as nn
-import torch.nn.functional as F
 from layers import GraphConvolution, MultiValGraphConvolution
-
 
 class GCN(nn.Module):
     def __init__(self, input, hidden, output, dropout):
         super(GCN, self).__init__()
 
         self.gc1 = GraphConvolution(input, hidden)
+        self.dropout1 = nn.Dropout(p=dropout)
+        self.relu = nn.ReLU()
         self.gc2 = GraphConvolution(hidden, output)
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(p=dropout)
+        self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, adj):
-        x = F.relu(self.gc1(x, adj))
-        x = self.dropout(x)
-        x = self.gc2(x, adj)
-        return F.log_softmax(x, dim=1)
+    def forward(self, x, preprocessed):
+        x = self.gc1(x, preprocessed)
+        x = self.relu(x)
+        x = self.dropout1(x)
+        x = self.gc2(x, preprocessed)
+        x = self.dropout2(x)
+        x = self.softmax(x)
+        return x
 
 
 class MultiValGCN(nn.Module):
@@ -23,11 +27,17 @@ class MultiValGCN(nn.Module):
         super(MultiValGCN, self).__init__()
 
         self.gc1 = MultiValGraphConvolution(input, hidden, order)
+        self.dropout1 = nn.Dropout(p=dropout)
+        self.relu = nn.ReLU()
         self.gc2 = MultiValGraphConvolution(hidden, output, order)
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(p=dropout)
+        self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, adj):
-        x = F.relu(self.gc1(x, adj))
-        x = self.dropout(x)
-        x = self.gc2(x, adj)
-        return F.log_softmax(x, dim=1)
+    def forward(self, x, preprocessed):
+        x = self.gc1(x, preprocessed)
+        x = self.relu(x)
+        x = self.dropout1(x)
+        x = self.gc2(x, preprocessed)
+        x = self.dropout2(x)
+        x = self.softmax(x)
+        return x

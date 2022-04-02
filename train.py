@@ -1,16 +1,14 @@
-from __future__ import division
-from __future__ import print_function
-
 import time
 import argparse
 import numpy as np
 
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn.functional as F
 
-from utils import load_data, accuracy, preprocess_adj
+from utils import accuracy, preprocess_adj
 from models import GCN, MultiValGCN
+from data import load_citeseer, load_cora
 
 # Training settings
 parser = argparse.ArgumentParser()
@@ -42,10 +40,10 @@ np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 
 # Load data
-adj, features, labels, idx_train, idx_val, idx_test = load_data()
+adj, features, labels, idx_train, idx_val, idx_test = load_cora()
 preprocessed = preprocess_adj(adj, args.propogation, args.order)
 
-# Model and optimizer
+# Model
 if args.propogation in ["SingleParam", "Renormalization", "FirstOrderOnly", "MLP"]:
     model = GCN(input=features.shape[1],
             hidden=args.hidden,
@@ -59,6 +57,7 @@ elif args.propogation in ["Chebyshev", "FirstOrder"]:
             order=args.order+1,
             dropout=args.dropout)
 
+# optimizer
 optimizer = optim.Adam([
                         {'params': model.gc1.parameters()},
                         {'params': model.gc2.parameters(), 'weight_decay':0}
@@ -104,11 +103,10 @@ def test():
           "accuracy= {:.4f}".format(acc_test.item()))
 
 
-# Train model
-t_total = time.time()
+# Train
+t = time.time()
 train()
-print("Optimization Finished!")
-print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+print("Total time: {:.4f}s".format(time.time() - t))
 
-# Testing
+# Test
 test()
