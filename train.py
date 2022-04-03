@@ -7,14 +7,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from utils import preprocess_adj
+from utils import load_data, preprocess_adj
 from models import GCN, MultiValGCN
 from data import load_citeseer, load_cora
 
 # Training settings
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, default="CORA",
-                    choices=["CORA", "Citeseer", "Pubmed"],
+parser.add_argument('--dataset', type=str, default="cora",
+                    choices=["cora", "citeseer", "pubmed"],
                     required=True, help='Dataset to conduct experiments.')
 parser.add_argument('--propogation', type=str, default="Renormalization",
                     choices=["Chebyshev", "FirstOrder", "SingleParam", "Renormalization", "FirstOrderOnly", "MLP"],
@@ -41,7 +41,7 @@ np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 
 # Load data
-adj, features, labels, idx_train, idx_val, idx_test = load_cora()
+adj, features, labels, idx_train, idx_val, idx_test = load_data(args.dataset)
 preprocessed = preprocess_adj(adj, args.propogation, args.order)
 
 # Model
@@ -90,20 +90,17 @@ def train():
             acc_val = accuracy_score(labels[idx_val], preds[idx_val])
             print('Epoch: {:04d}'.format(epoch+1),
                 'loss_train: {:.4f}'.format(loss.item()),
-                'acc_train: {:.4f}'.format(acc_train.item()),
+                'acc_train: {:.4f}'.format(acc_train),
                 'loss_val: {:.4f}'.format(loss_val),
-                'acc_val: {:.4f}'.format(acc_val.item()))
+                'acc_val: {:.4f}'.format(acc_val))
 
 
 def test():
     model.eval()
     output = model(features, preprocessed)
-    loss_test = criterion(output[idx_test], labels[idx_test])
     preds = output.max(1)[1].type_as(labels)
     acc_test = accuracy_score(labels[idx_test], preds[idx_test])
-    print("Test set results:",
-          "loss= {:.4f}".format(loss_test.item()),
-          "accuracy= {:.4f}".format(acc_test.item()))
+    print("Test set results:", "accuracy= {:.4f}".format(acc_test))
 
 
 # Train
