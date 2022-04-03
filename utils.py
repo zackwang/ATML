@@ -18,7 +18,7 @@ def preprocess_features(features):
     r_inv = np.power(rowsum, -1).flatten()
     r_inv[np.isinf(r_inv)] = 0.
     r_mat_inv = sp.diags(r_inv)
-    features = r_mat_inv.dot(features)
+    features = r_mat_inv.dot(features).tocoo().astype(np.float32)
     return convert_tensor(features)
 
 def load_data(dataset_str):
@@ -44,11 +44,11 @@ def load_data(dataset_str):
     names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
     objects = []
     for i in range(len(names)):
-        with open("data/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
+        with open("data0/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
             objects.append(pkl.load(f, encoding='latin1'))
 
     x, y, tx, ty, allx, ally, graph = tuple(objects)
-    test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
+    test_idx_reorder = parse_index_file("data0/ind.{}.test.index".format(dataset_str))
     test_idx_range = np.sort(test_idx_reorder)
 
     if dataset_str == 'citeseer':
@@ -119,11 +119,11 @@ input: A
 output: D^{-1/2}(A)D^{-1/2}
 """
 def normalize_adj(mx):
-    D = np.array(mx.sum(1))
-    D_inv_sqrt = np.power(D, -0.5).flatten()
-    D_inv_sqrt[np.isinf(D_inv_sqrt)] = 0.
-    D_mat_inv_sqrt = sp.diags(D_inv_sqrt)
-    mx = mx.dot(D_mat_inv_sqrt).transpose().dot(D_mat_inv_sqrt).tocoo()
+    D = np.array(mx.sum(axis=1)).flatten()
+    D_inv_sqrt = np.power(D, -0.5)
+    D_inv_sqrt = np.diag(D_inv_sqrt)
+    D_inv_sqrt = sp.coo_matrix(D_inv_sqrt)
+    mx = mx.dot(D_inv_sqrt).transpose().dot(D_inv_sqrt)
     return mx
 
 """
@@ -132,26 +132,29 @@ input: adjacent matrix (adj), chebyshev order (k)
 output: [t_0, ..., t_k] (t_i is sparse matric)
 """
 def chebyshev_polynomials(adj, k):
-    laplacian = sp.eye(adj.shape[0]) - normalize_adj(adj)
-    largest_eigval, _ = eigsh(laplacian, 1, which='LM')
-    scaled_laplacian = (2. / largest_eigval[0]) * laplacian - sp.eye(adj.shape[0])
+    IN = sp.eye(adj.shape[0])
+    laplacian = IN - normalize_adj(adj)
+    eigenvalue, eigenvector = eigsh(laplacian, k=1, which='LM')
+    rescaled_lap = (2.0 / eigenvalue[0]) * laplacian - IN
 
-    t = [sp.eye(adj.shape[0]), scaled_laplacian]
+    t = [IN, rescaled_lap]
 
     for i in range(2, k+1):
-        s_lap = sp.csr_matrix(scaled_laplacian, copy=True)
-        t_k = 2 * s_lap.dot(t[-1]) - t[-2]
+        t_k = 2.0 * rescaled_lap.dot(t[-1]) - t[-2]
         t.append(t_k)
 
     return t
 
+
 """
-Convert a scipy sparse matrix to a torch sparse tensor.
+Convert a sparse coo matrix to a torch sparse tensor.
 """
 def convert_tensor(sparse_mx):
     sparse_mx = sparse_mx.tocoo().astype(np.float32)
-    indices = torch.from_numpy(
-        np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
-    values = torch.from_numpy(sparse_mx.data)
+    values = sparse_mx.data
+    values = torch.FloatTensor(values)
+    indices = np.vstack((sparse_mx.row, sparse_mx.col))
+    indices = torch.LongTensor(indices)
     shape = torch.Size(sparse_mx.shape)
+    
     return torch.sparse.FloatTensor(indices, values, shape)

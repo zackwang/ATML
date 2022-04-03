@@ -8,8 +8,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 from utils import load_data, preprocess_adj
+# from utils import preprocess_adj
 from models import GCN, MultiValGCN
-from data import load_citeseer, load_cora
+from data import load_dataset
 
 # Training settings
 parser = argparse.ArgumentParser()
@@ -42,6 +43,7 @@ torch.manual_seed(args.seed)
 
 # Load data
 adj, features, labels, idx_train, idx_val, idx_test = load_data(args.dataset)
+# adj, features, labels, idx_train, idx_val, idx_test = load_dataset(args.dataset)
 preprocessed = preprocess_adj(adj, args.propogation, args.order)
 
 # Model
