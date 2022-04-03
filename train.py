@@ -1,12 +1,13 @@
 import time
 import argparse
 import numpy as np
+from sklearn.metrics import accuracy_score
 
 import torch
+import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 
-from utils import accuracy, preprocess_adj
+from utils import preprocess_adj
 from models import GCN, MultiValGCN
 from data import load_citeseer, load_cora
 
@@ -57,12 +58,12 @@ elif args.propogation in ["Chebyshev", "FirstOrder"]:
             order=args.order+1,
             dropout=args.dropout)
 
-# optimizer
+# optimizer and criterion
 optimizer = optim.Adam([
                         {'params': model.gc1.parameters()},
                         {'params': model.gc2.parameters(), 'weight_decay':0}
                     ], lr=args.lr, weight_decay=args.weight_decay)
-
+criterion = nn.NLLLoss()
 
 def train():
     model.train()
@@ -71,11 +72,11 @@ def train():
     for epoch in range(args.epochs):
         optimizer.zero_grad()
         output = model(features, preprocessed)
-        loss = F.nll_loss(output[idx_train], labels[idx_train])
+        loss = criterion(output[idx_train], labels[idx_train])
         loss.backward()
         optimizer.step()
 
-        loss_val = F.nll_loss(output[idx_val], labels[idx_val]).item()
+        loss_val = criterion(output[idx_val], labels[idx_val]).item()
         if best_loss_val == 0 or best_loss_val > loss_val:
             best_loss_val = loss_val
 
@@ -84,8 +85,9 @@ def train():
                 break
             early_stop_loss_val = best_loss_val
 
-            acc_train = accuracy(output[idx_train], labels[idx_train])
-            acc_val = accuracy(output[idx_val], labels[idx_val])
+            preds = output.max(1)[1].type_as(labels)
+            acc_train = accuracy_score(labels[idx_train], preds[idx_train])
+            acc_val = accuracy_score(labels[idx_val], preds[idx_val])
             print('Epoch: {:04d}'.format(epoch+1),
                 'loss_train: {:.4f}'.format(loss.item()),
                 'acc_train: {:.4f}'.format(acc_train.item()),
@@ -96,8 +98,9 @@ def train():
 def test():
     model.eval()
     output = model(features, preprocessed)
-    loss_test = F.nll_loss(output[idx_test], labels[idx_test])
-    acc_test = accuracy(output[idx_test], labels[idx_test])
+    loss_test = criterion(output[idx_test], labels[idx_test])
+    preds = output.max(1)[1].type_as(labels)
+    acc_test = accuracy_score(labels[idx_test], preds[idx_test])
     print("Test set results:",
           "loss= {:.4f}".format(loss_test.item()),
           "accuracy= {:.4f}".format(acc_test.item()))

@@ -35,17 +35,6 @@ def preprocess_adj(adj, propogation, order):
     return preprocessed
 
 """
-(row-)normalization of input feature vectors described in G&B(2010)
-"""
-def normalize(mx):
-    rowsum = np.array(mx.sum(1))
-    r_inv = np.power(rowsum, -1).flatten()
-    r_inv[np.isinf(r_inv)] = 0.
-    r_mat_inv = sp.diags(r_inv)
-    mx = r_mat_inv.dot(mx)
-    return mx
-
-"""
 Renormalization of adjacent matrix  
 input: A
 output: D^{-1/2}(A)D^{-1/2}
@@ -76,12 +65,6 @@ def chebyshev_polynomials(adj, k):
         t.append(t_k)
 
     return t
-
-def accuracy(output, labels):
-    preds = output.max(1)[1].type_as(labels)
-    correct = preds.eq(labels).double()
-    correct = correct.sum()
-    return correct / len(labels)
 
 """
 Convert a scipy sparse matrix to a torch sparse tensor.
