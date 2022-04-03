@@ -125,11 +125,12 @@ def build_pubmed_features(path):
         row = 0
         nodes_idx_map = {}
         label_strings = []
-        feature_matrix = sp.lil_matrix((len(lines), len(feature_idx_map)))
-
-        # e.g. 3542527	label=2	w-use=0.027970030654407077	w-studi=0.013917168664368762	summary=w-use,w-studi
+        feature_matrix = sp.lil_matrix((len(lines), len(feature_idx_map)), dtype=np.float32)
 
         for line in lines:
+            # format: 3542527	label=2	w-use=0.027970030654407077	w-studi=0.013917168664368762	summary=w-use,w-studi
+            if not line.strip():
+                continue
             tokens = line.split()
 
             node = tokens[0]
@@ -142,7 +143,7 @@ def build_pubmed_features(path):
             features = tokens[2:-1]
             for feature in features:
                 fname, fvalue = feature.split('=')
-                feature_matrix[(row, feature_idx_map[fname])] = float(fvalue)
+                feature_matrix[(row, feature_idx_map[fname])] = fvalue
 
             row += 1
         
@@ -153,26 +154,29 @@ def build_pubmed_features(path):
 
 
 def build_pubmed_adj_matrix(path, nodes_idx_map):
-    with open(f"{path}/Pubmed-Diabetes.NODE.cites.tab") as f:
-        lines = f.readlines() # skip first line
+    with open(f"{path}/Pubmed-Diabetes.DIRECTED.cites.tab") as f:
+        lines = f.readlines()
 
         # skip first two lines
         lines.pop(0)
         lines.pop(0)
 
         edges = []
-        # e.g. 33824	paper:19127292	|	paper:17363749
         for line in lines:
+            # format: 33824	paper:19127292	|	paper:17363749
+            if not line.strip():
+                continue
+            
             tokens = line.split()
             from_node = tokens[1].split(':')[1]
-            to_node = tokens[2].split(':')[1]
+            to_node = tokens[-1].split(':')[1]
             edges.append([to_node, from_node])
 
         return build_adj_matrix(edges, nodes_idx_map)
 
 
 def load_pubmed():
-    path = './data/test'
+    path = './data/pubmed'
 
     features, labels, nodes_idx_map = build_pubmed_features(path)
     adj_mtx = build_pubmed_adj_matrix(path, nodes_idx_map)
