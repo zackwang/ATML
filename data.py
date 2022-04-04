@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 import torch
+from torch_geometric.datasets import NELL
 
 def encode_labels(label_strings):
     label_idx_map = {}
@@ -16,12 +17,16 @@ def encode_labels(label_strings):
     return np.array(encoded_labels, dtype=np.int32)
 
 def row_normalize(mtx):
-    # normalize feature matrix by each row
-    r_sum = np.array(mtx.sum(axis=1))
-    r_sum_mtx = r_sum * np.ones(mtx.shape)
-    normalized_feature_mtx = np.divide(mtx.todense(), r_sum_mtx)
+    # calculate a row sum array
+    rsum = np.array(mtx.sum(1), dtype=np.float32).flatten()
+    # calcuate it's inverse
+    rsum_inv = np.power(rsum, -1, out=rsum, where=rsum!=0.)
+    # create a diagnal matrix with inverse row sum value
+    rsum_inv_diag_mtx = sp.diags(rsum_inv)
+    # multiply each element by the corresponding row sum
+    features = rsum_inv_diag_mtx.dot(mtx)
 
-    return normalized_feature_mtx
+    return features
 
 def build_adj_matrix(edges, nodes_idx_map):
     to_nodes = []
@@ -55,7 +60,7 @@ def load_cora():
     cites = np.genfromtxt(f"{path}/cora.cites", dtype=np.int32)
 
     nodes = np.array(content[:, 0], dtype=np.int32)
-    features = row_normalize(features_mtx = sp.csr_matrix(content[:, 1:-1], dtype=np.float32))
+    features = row_normalize(sp.csr_matrix(content[:, 1:-1], dtype=np.float32))
     labels = encode_labels(content[:, -1])
 
     # build graph
@@ -83,7 +88,7 @@ def load_citeseer():
     cites = np.genfromtxt(f"{path}/citeseer.cites", dtype=np.dtype(str))
 
     nodes = np.array(content[:, 0], dtype=np.dtype(str))
-    features = row_normalize(features_mtx = sp.csr_matrix(content[:, 1:-1], dtype=np.float32))
+    features = row_normalize(sp.csr_matrix(content[:, 1:-1], dtype=np.float32))
     labels = encode_labels(content[:, -1])
 
     # build graph
@@ -194,6 +199,57 @@ def load_pubmed():
 
     return adj_mtx, features, labels, idx_train, idx_val, idx_test
 
+def to_adj_mtx(edge_index, num_nodes):
+    num_edges = edge_index.shape[1]
+
+    matrix_data = np.ones(num_edges, dtype=np.float32)
+    from_nodes = edge_index[0]
+    to_nodes = edge_index[1]
+
+    adj = sp.coo_matrix((matrix_data, (to_nodes, from_nodes)), shape=(num_nodes, num_nodes))
+
+    # make adjacency matrix symmetric
+    sym_adj = adj + adj.T.multiply(adj.T > adj)
+
+    return sym_adj
+
+
+def load_nell():
+    path = './data/nell'
+    dataset = NELL(root=path)
+
+    # get lable vector
+    labels = dataset.data.y
+
+    # build feature matrix
+    features_tensor = dataset.data.x
+    features_mtx = row_normalize(features_tensor.to_scipy())
+
+    values = features_mtx.data
+    features_mtx = features_mtx.tocoo()
+    indices = np.vstack((features_mtx.row, features_mtx.col))
+
+    features = torch.sparse.FloatTensor(
+        torch.LongTensor(indices),
+        torch.FloatTensor(values),
+        features_mtx.shape)
+
+    # build adjacency matrix
+    num_nodes = labels.shape[0]
+    edge_index_tensor = dataset.data.edge_index
+    edge_index = edge_index_tensor.numpy()
+    adj_mtx = to_adj_mtx(edge_index, num_nodes)
+
+    idx_train = range(140)
+    idx_val = range(200, 500)
+    idx_test = range(500, 1500)
+
+    idx_train = torch.LongTensor(idx_train)
+    idx_val = torch.LongTensor(idx_val)
+    idx_test = torch.LongTensor(idx_test)
+
+    return adj_mtx, features, labels, idx_train, idx_val, idx_test
+
 
 def load_dataset(dataset):
     if dataset == 'cora':
@@ -202,3 +258,5 @@ def load_dataset(dataset):
         return load_citeseer()
     elif dataset == 'pubmed':
         return load_pubmed()
+    elif dataset == 'nell':
+        return load_nell()
