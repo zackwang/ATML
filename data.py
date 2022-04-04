@@ -1,4 +1,5 @@
 from pathlib import Path
+from re import I
 
 import numpy as np
 import scipy.sparse as sp
@@ -294,9 +295,10 @@ def load_from_torch_geometric(dataset_name):
         idx_val = np.where(dataset.data.val_mask.numpy())[0]
         idx_test = np.where(dataset.data.test_mask.numpy())[0]
 
-    assert(len(idx_train) == NUM_TRAIN_DATA_PER_LABEL_CLASS * num_label_classes)
-    assert(len(idx_val) == NUM_VAL_DATA)
-    assert(len(idx_test) == NUM_TEST_DATA)
+    if dataset_name != 'nell':
+        assert(len(idx_train) == NUM_TRAIN_DATA_PER_LABEL_CLASS * num_label_classes)
+        assert(len(idx_val) == NUM_VAL_DATA)
+        assert(len(idx_test) == NUM_TEST_DATA)
 
     idx_train = torch.LongTensor(idx_train)
     idx_val = torch.LongTensor(idx_val)
