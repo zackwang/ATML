@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.sparse as sp
 import torch
-from torch_geometric.datasets import NELL, Planetoid
+from torch_geometric.datasets import Coauthor, NELL, Planetoid
+
 
 def encode_labels(label_strings):
     label_idx_map = {}
@@ -13,20 +14,22 @@ def encode_labels(label_strings):
             label_idx_map[label] = counter
             counter += 1
         encoded_labels.append(label_idx_map[label])
-    
+
     return np.array(encoded_labels, dtype=np.int32)
+
 
 def row_normalize(mtx):
     # calculate a row sum array
     rsum = np.array(mtx.sum(1), dtype=np.float32).flatten()
     # calcuate it's inverse
-    rsum_inv = np.power(rsum, -1, out=rsum, where=rsum!=0.)
+    rsum_inv = np.power(rsum, -1, out=rsum, where=rsum != 0.)
     # create a diagnal matrix with inverse row sum value
     rsum_inv_diag_mtx = sp.diags(rsum_inv)
     # multiply each element by the corresponding row sum
     features = rsum_inv_diag_mtx.dot(mtx)
 
     return features
+
 
 def build_adj_matrix(edges, nodes_idx_map):
     to_nodes = []
@@ -45,7 +48,8 @@ def build_adj_matrix(edges, nodes_idx_map):
     to_nodes = np.array(to_nodes, dtype=np.int32)
     from_nodes = np.array(from_nodes, dtype=np.int32)
 
-    adj = sp.coo_matrix((matrix_data, (to_nodes, from_nodes)), shape=(num_nodes, num_nodes))
+    adj = sp.coo_matrix((matrix_data, (to_nodes, from_nodes)),
+                        shape=(num_nodes, num_nodes))
 
     # make adjacency matrix symmetric
     sym_adj = adj + adj.T.multiply(adj.T > adj)
@@ -81,6 +85,7 @@ def load_cora_from_raw():
 
     return adj_mtx, features, labels, idx_train, idx_val, idx_test
 
+
 def load_citeseer_from_raw():
     path = './data/citeseer'
 
@@ -112,7 +117,7 @@ def load_citeseer_from_raw():
 
 def build_pubmed_features(path):
     with open(f"{path}/Pubmed-Diabetes.NODE.paper.tab") as f:
-        lines = f.readlines() # skip first line
+        lines = f.readlines()  # skip first line
 
         # skip first line
         lines.pop(0)
@@ -122,15 +127,16 @@ def build_pubmed_features(path):
         all_words = line.split()
         all_words = all_words[1:-1]
 
-        feature_idx_map = {} # feature to idx mapping
+        feature_idx_map = {}  # feature to idx mapping
         for i, token in enumerate(all_words):
             word = token.split(':')[1]
             feature_idx_map[word] = i
-        
+
         row = 0
         nodes_idx_map = {}
         label_strings = []
-        feature_matrix = sp.lil_matrix((len(lines), len(feature_idx_map)), dtype=np.float32)
+        feature_matrix = sp.lil_matrix(
+            (len(lines), len(feature_idx_map)), dtype=np.float32)
 
         for line in lines:
             # format: 3542527	label=2	w-use=0.027970030654407077	w-studi=0.013917168664368762	summary=w-use,w-studi
@@ -141,7 +147,7 @@ def build_pubmed_features(path):
             node = tokens[0]
             assert(node not in nodes_idx_map)
             nodes_idx_map[node] = row
-            
+
             label = tokens[1].split('=')[1]
             label_strings.append(label)
 
@@ -151,7 +157,7 @@ def build_pubmed_features(path):
                 feature_matrix[(row, feature_idx_map[fname])] = fvalue
 
             row += 1
-        
+
         features = row_normalize(feature_matrix)
         labels = encode_labels(label_strings)
 
@@ -171,7 +177,7 @@ def build_pubmed_adj_matrix(path, nodes_idx_map):
             # format: 33824	paper:19127292	|	paper:17363749
             if not line.strip():
                 continue
-            
+
             tokens = line.split()
             from_node = tokens[1].split(':')[1]
             to_node = tokens[-1].split(':')[1]
@@ -207,7 +213,8 @@ def edge_index_to_adj_mtx(edge_index, num_nodes):
     from_nodes = edge_index[0]
     to_nodes = edge_index[1]
 
-    adj = sp.coo_matrix((matrix_data, (to_nodes, from_nodes)), shape=(num_nodes, num_nodes))
+    adj = sp.coo_matrix((matrix_data, (to_nodes, from_nodes)),
+                        shape=(num_nodes, num_nodes))
 
     # make adjacency matrix symmetric
     sym_adj = adj + adj.T.multiply(adj.T > adj)
@@ -224,6 +231,8 @@ def load_from_torch_geometric(dataset):
         dataset = Planetoid(root='./data/pubmed', name='PubMed')
     elif dataset == 'nell':
         dataset = NELL(root='./data/nell')
+    elif dataset == 'coauthor':
+        dataset == Coauthor(root='./data/coauthor', name='CS')
     else:
         raise Exception(f'unrecognized dataset: {dataset}')
 
@@ -267,4 +276,4 @@ def load_from_torch_geometric(dataset):
 
 
 def load_dataset(dataset):
-   load_from_torch_geometric(dataset)
+    load_from_torch_geometric(dataset)
