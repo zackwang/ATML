@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 import torch
-from torch_geometric.datasets import NELL
+from torch_geometric.datasets import NELL, Planetoid
 
 def encode_labels(label_strings):
     label_idx_map = {}
@@ -53,7 +53,7 @@ def build_adj_matrix(edges, nodes_idx_map):
     return sym_adj.tocoo()
 
 
-def load_cora():
+def load_cora_from_raw():
     path = './data/cora'
 
     content = np.genfromtxt(f"{path}/cora.content", dtype=np.dtype(str))
@@ -81,7 +81,7 @@ def load_cora():
 
     return adj_mtx, features, labels, idx_train, idx_val, idx_test
 
-def load_citeseer():
+def load_citeseer_from_raw():
     path = './data/citeseer'
 
     content = np.genfromtxt(f"{path}/citeseer.content", dtype=np.dtype(str))
@@ -180,8 +180,8 @@ def build_pubmed_adj_matrix(path, nodes_idx_map):
         return build_adj_matrix(edges, nodes_idx_map)
 
 
-def load_pubmed():
-    path = './data/pubmed'
+def load_pubmed_from_raw():
+    path = './data/pubmed2'
 
     features, labels, nodes_idx_map = build_pubmed_features(path)
     adj_mtx = build_pubmed_adj_matrix(path, nodes_idx_map)
@@ -199,7 +199,8 @@ def load_pubmed():
 
     return adj_mtx, features, labels, idx_train, idx_val, idx_test
 
-def to_adj_mtx(edge_index, num_nodes):
+
+def edge_index_to_adj_mtx(edge_index, num_nodes):
     num_edges = edge_index.shape[1]
 
     matrix_data = np.ones(num_edges, dtype=np.float32)
@@ -214,16 +215,29 @@ def to_adj_mtx(edge_index, num_nodes):
     return sym_adj
 
 
-def load_nell():
-    path = './data/nell'
-    dataset = NELL(root=path)
+def load_from_torch_geometric(dataset):
+    if dataset == 'cora':
+        dataset = Planetoid(root='./data/cora', name='Cora')
+    elif dataset == 'citeseer':
+        dataset = Planetoid(root='./data/citeseer', name='CiteSeer')
+    elif dataset == 'pubmed':
+        dataset = Planetoid(root='./data/pubmed', name='PubMed')
+    elif dataset == 'nell':
+        dataset = NELL(root='./data/nell')
+    else:
+        raise Exception(f'unrecognized dataset: {dataset}')
 
     # get lable vector
     labels = dataset.data.y
 
     # build feature matrix
     features_tensor = dataset.data.x
-    features_mtx = row_normalize(features_tensor.to_scipy())
+    if hasattr(features_tensor, 'to_scipy'):
+        features_mtx = features_tensor.to_scipy()
+    else:
+        features_mtx = sp.csr_matrix(features_tensor.numpy(), dtype=np.float32)
+
+    features_mtx = row_normalize(features_mtx)
 
     values = features_mtx.data
     features_mtx = features_mtx.tocoo()
@@ -238,11 +252,12 @@ def load_nell():
     num_nodes = labels.shape[0]
     edge_index_tensor = dataset.data.edge_index
     edge_index = edge_index_tensor.numpy()
-    adj_mtx = to_adj_mtx(edge_index, num_nodes)
+    adj_mtx = edge_index_to_adj_mtx(edge_index, num_nodes)
 
-    idx_train = range(140)
-    idx_val = range(200, 500)
-    idx_test = range(500, 1500)
+    # build training, validation and test set index
+    idx_train = np.where(dataset.data.train_mask.numpy())[0]
+    idx_val = np.where(dataset.data.val_mask.numpy())[0]
+    idx_test = np.where(dataset.data.test_mask.numpy())[0]
 
     idx_train = torch.LongTensor(idx_train)
     idx_val = torch.LongTensor(idx_val)
@@ -252,11 +267,4 @@ def load_nell():
 
 
 def load_dataset(dataset):
-    if dataset == 'cora':
-        return load_cora()
-    elif dataset == 'citeseer':
-        return load_citeseer()
-    elif dataset == 'pubmed':
-        return load_pubmed()
-    elif dataset == 'nell':
-        return load_nell()
+   load_from_torch_geometric(dataset)
