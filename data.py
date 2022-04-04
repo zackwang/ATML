@@ -3,6 +3,10 @@ import scipy.sparse as sp
 import torch
 from torch_geometric.datasets import Coauthor, NELL, Planetoid
 
+NUM_TRAIN_DATA_PER_LABEL_CLASS = 20
+NUM_VAL_DATA = 500
+NUM_TEST_DATA = 1000
+
 
 def encode_labels(label_strings):
     label_idx_map = {}
@@ -222,26 +226,28 @@ def edge_index_to_adj_mtx(edge_index, num_nodes):
     return sym_adj
 
 
-def load_from_torch_geometric(dataset):
-    if dataset == 'cora':
+def load_from_torch_geometric(dataset_name):
+    if dataset_name == 'cora':
         dataset = Planetoid(root='./data/cora', name='Cora')
-    elif dataset == 'citeseer':
+    elif dataset_name == 'citeseer':
         dataset = Planetoid(root='./data/citeseer', name='CiteSeer')
-    elif dataset == 'pubmed':
+    elif dataset_name == 'pubmed':
         dataset = Planetoid(root='./data/pubmed', name='PubMed')
-    elif dataset == 'nell':
+    elif dataset_name == 'nell':
         dataset = NELL(root='./data/nell')
-    elif dataset == 'coauthor':
-        dataset == Coauthor(root='./data/coauthor', name='CS')
+    elif dataset_name == 'coauthor':
+        dataset = Coauthor(root='./data/coauthor', name='CS')
     else:
         raise Exception(f'unrecognized dataset: {dataset}')
 
     # get lable vector
     labels = dataset.data.y
+    num_label_classes = len(set(labels.numpy()))
 
     # build feature matrix
     features_tensor = dataset.data.x
     if hasattr(features_tensor, 'to_scipy'):
+        # special case for pubmed dataset
         features_mtx = features_tensor.to_scipy()
     else:
         features_mtx = sp.csr_matrix(features_tensor.numpy(), dtype=np.float32)
@@ -264,9 +270,30 @@ def load_from_torch_geometric(dataset):
     adj_mtx = edge_index_to_adj_mtx(edge_index, num_nodes)
 
     # build training, validation and test set index
-    idx_train = np.where(dataset.data.train_mask.numpy())[0]
-    idx_val = np.where(dataset.data.val_mask.numpy())[0]
-    idx_test = np.where(dataset.data.test_mask.numpy())[0]
+    if dataset_name == 'coauthor':
+        # special case for coauthor dataset which does not have masks
+        idx_train = np.array([], dtype=np.int32)
+        labels_copy = labels.numpy()
+        label_set = set(labels_copy)
+        # sample 20 training dataset for each label class
+        for label in label_set:
+            sample = (np.where(labels_copy == label)[0]
+                      [0:NUM_TRAIN_DATA_PER_LABEL_CLASS])
+            idx_train = np.concatenate([idx_train, sample])
+            labels_copy[sample] = -1
+        # construct validation dataset
+        idx_val = np.where(labels_copy != -1)[0][0: NUM_VAL_DATA]
+        labels_copy[idx_val] = -1
+        # construct testing dataset
+        idx_test = np.where(labels_copy != -1)[0][0: NUM_TEST_DATA]
+    else:
+        idx_train = np.where(dataset.data.train_mask.numpy())[0]
+        idx_val = np.where(dataset.data.val_mask.numpy())[0]
+        idx_test = np.where(dataset.data.test_mask.numpy())[0]
+
+    assert(len(idx_train) == NUM_TRAIN_DATA_PER_LABEL_CLASS * num_label_classes)
+    assert(len(idx_val) == NUM_VAL_DATA)
+    assert(len(idx_test) == NUM_TEST_DATA)
 
     idx_train = torch.LongTensor(idx_train)
     idx_val = torch.LongTensor(idx_val)
