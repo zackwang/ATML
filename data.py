@@ -64,7 +64,7 @@ def build_adj_matrix(edges, nodes_idx_map):
 
 
 def load_cora_from_raw():
-    path = './data/cora'
+    path = './data/cora_raw'
 
     content = np.genfromtxt(f"{path}/cora.content", dtype=np.dtype(str))
     cites = np.genfromtxt(f"{path}/cora.cites", dtype=np.int32)
@@ -93,7 +93,7 @@ def load_cora_from_raw():
 
 
 def load_citeseer_from_raw():
-    path = './data/citeseer'
+    path = './data/citeseer_raw'
 
     content = np.genfromtxt(f"{path}/citeseer.content", dtype=np.dtype(str))
     cites = np.genfromtxt(f"{path}/citeseer.cites", dtype=np.dtype(str))
@@ -193,7 +193,7 @@ def build_pubmed_adj_matrix(path, nodes_idx_map):
 
 
 def load_pubmed_from_raw():
-    path = './data/pubmed2'
+    path = './data/pubmed_raw'
 
     features, labels, nodes_idx_map = build_pubmed_features(path)
     adj_mtx = build_pubmed_adj_matrix(path, nodes_idx_map)
@@ -276,7 +276,7 @@ def load_from_torch_geometric(dataset_name):
     if dataset_name == 'coauthor':
         # special case for coauthor dataset which does not have masks
         idx_train = np.array([], dtype=np.int32)
-        labels_copy = labels.numpy()
+        labels_copy = np.copy(labels.numpy())
         label_set = set(labels_copy)
         # sample 20 training dataset for each label class
         for label in label_set:
@@ -306,4 +306,4 @@ def load_from_torch_geometric(dataset_name):
 
 
 def load_dataset(dataset):
-    load_from_torch_geometric(dataset)
+    return load_from_torch_geometric(dataset)
