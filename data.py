@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import scipy.sparse as sp
 import torch
@@ -227,6 +229,7 @@ def edge_index_to_adj_mtx(edge_index, num_nodes):
 
 
 def load_from_torch_geometric(dataset_name):
+    Path(f"./data/{dataset_name}").mkdir(parents=True, exist_ok=True)
     if dataset_name == 'cora':
         dataset = Planetoid(root='./data/cora', name='Cora')
     elif dataset_name == 'citeseer':
