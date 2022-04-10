@@ -1,10 +1,12 @@
 from pathlib import Path
 from re import I
 
+import random
 import numpy as np
 import scipy.sparse as sp
 import torch
 from torch_geometric.datasets import Coauthor, NELL, Planetoid
+from utils import convert_tensor
 
 NUM_TRAIN_DATA_PER_LABEL_CLASS = 20
 NUM_VAL_DATA = 500
@@ -229,7 +231,7 @@ def edge_index_to_adj_mtx(edge_index, num_nodes):
     return sym_adj
 
 
-def load_from_torch_geometric(dataset_name):
+def load_from_torch_geometric(dataset_name, mode):
     Path(f"./data/{dataset_name}").mkdir(parents=True, exist_ok=True)
     if dataset_name == 'cora':
         dataset = Planetoid(root='./data/cora', name='Cora')
@@ -274,38 +276,123 @@ def load_from_torch_geometric(dataset_name):
     adj_mtx = edge_index_to_adj_mtx(edge_index, num_nodes)
 
     # build training, validation and test set index
-    if dataset_name == 'coauthor':
-        # special case for coauthor dataset which does not have masks
-        idx_train = np.array([], dtype=np.int32)
-        labels_copy = np.copy(labels.numpy())
-        label_set = set(labels_copy)
-        # sample 20 training dataset for each label class
-        for label in label_set:
-            sample = (np.where(labels_copy == label)[0]
-                      [0:NUM_TRAIN_DATA_PER_LABEL_CLASS])
-            idx_train = np.concatenate([idx_train, sample])
-            labels_copy[sample] = -1
-        # construct validation dataset
-        idx_val = np.where(labels_copy != -1)[0][0: NUM_VAL_DATA]
-        labels_copy[idx_val] = -1
-        # construct testing dataset
-        idx_test = np.where(labels_copy != -1)[0][0: NUM_TEST_DATA]
-    else:
-        idx_train = np.where(dataset.data.train_mask.numpy())[0]
-        idx_val = np.where(dataset.data.val_mask.numpy())[0]
-        idx_test = np.where(dataset.data.test_mask.numpy())[0]
+    NUM_TRAIN_DATA_PER_LABEL_CLASS = 20
+    # use official data split
+    if mode == 'official':
+        if dataset_name == 'coauthor':
+            # special case for coauthor dataset which does not have masks
+            idx_train = np.array([], dtype=np.int32)
+            labels_copy = np.copy(labels.numpy())
+            label_set = set(labels_copy)
+            # sample 20 training dataset for each label class
+            for label in label_set:
+                sample = (np.where(labels_copy == label)[0]
+                        [0:NUM_TRAIN_DATA_PER_LABEL_CLASS])
+                idx_train = np.concatenate([idx_train, sample])
+                labels_copy[sample] = -1
+            # construct validation dataset
+            idx_val = np.where(labels_copy != -1)[0][0: NUM_VAL_DATA]
+            labels_copy[idx_val] = -1
+            # construct testing dataset
+            idx_test = np.where(labels_copy != -1)[0][0: NUM_TEST_DATA]
+        else:
+            idx_train = np.where(dataset.data.train_mask.numpy())[0]
+            idx_val = np.where(dataset.data.val_mask.numpy())[0]
+            idx_test = np.where(dataset.data.test_mask.numpy())[0]
 
-    if dataset_name != 'nell':
-        assert(len(idx_train) == NUM_TRAIN_DATA_PER_LABEL_CLASS * num_label_classes)
-        assert(len(idx_val) == NUM_VAL_DATA)
-        assert(len(idx_test) == NUM_TEST_DATA)
+        if dataset_name != 'nell':
+            assert(len(idx_train) == NUM_TRAIN_DATA_PER_LABEL_CLASS * num_label_classes)
+            assert(len(idx_val) == NUM_VAL_DATA)
+            assert(len(idx_test) == NUM_TEST_DATA)
+        
+        idx_train = [idx_train]
+        idx_val = [idx_val]
+        idx_test = [idx_test]
+    # use random split for ten times
+    elif mode == 'random':
+        if dataset_name == 'nell':
+            NUM_TRAIN_DATA_PER_LABEL_CLASS = 2
+        idx_train = list()
+        idx_val = list()
+        idx_test = list()
+        for i in range(10):
+            labels_copy = np.copy(labels.numpy())
+            label_set = set(labels_copy)
+            idx_train_0 = np.array([], dtype=np.int32)
 
-    idx_train = torch.LongTensor(idx_train)
-    idx_val = torch.LongTensor(idx_val)
-    idx_test = torch.LongTensor(idx_test)
+            # sample 20 training dataset for each label class
+            for label in label_set:
+                whole = np.where(labels_copy == label)[0]
+                start = random.randint(0, whole.shape[0]-NUM_TRAIN_DATA_PER_LABEL_CLASS)
+                sample = whole[start:start+NUM_TRAIN_DATA_PER_LABEL_CLASS]
+                idx_train_0 = np.concatenate([idx_train_0, sample])
+                labels_copy[sample] = -1
+            
+            idx_val_0 = np.where(labels_copy != -1)[0][0: NUM_VAL_DATA]
+            labels_copy[idx_val_0] = -1
+            # construct testing dataset
+            idx_test_0 = np.where(labels_copy != -1)[0][0: NUM_TEST_DATA]
+
+            idx_train.append(idx_train_0)
+            idx_val.append(idx_val_0)
+            idx_test.append(idx_test_0)
+
+    elif mode == 'fiveFold':
+        idx_train = list()
+        idx_val = list()
+        idx_test = list()
+        fold_size = int(num_nodes/5)
+        for i in range(5):
+            if i < 2:
+                idx_train_0 = [*range(i*fold_size, (i+4)*fold_size)]
+                idx_test_0 = [*range((i+4)*fold_size, num_nodes)] + [*range(0, i*fold_size)]
+            else:
+                idx_train_0 = [*range(i*fold_size, num_nodes)] + [*range(0, (i-1)*fold_size)]
+                idx_test_0 = [*range((i-1)*fold_size, i*fold_size)]
+            idx_val_0 = idx_train_0[0:fold_size]
+            
+            idx_train.append(idx_train_0)
+            idx_val.append(idx_val_0)
+            idx_test.append(idx_test_0)
+            # import pdb; pdb.set_trace()
+
+    idx_train = [torch.LongTensor(_) for _ in idx_train]
+    idx_val = [torch.LongTensor(_) for _ in idx_val]
+    idx_test = [torch.LongTensor(_) for _ in idx_test]
 
     return adj_mtx, features, labels, idx_train, idx_val, idx_test
 
 
-def load_dataset(dataset):
-    return load_from_torch_geometric(dataset)
+def load_dataset(dataset, mode):
+    return load_from_torch_geometric(dataset, mode)
+
+def generate(n):
+    adj = sp.csr_matrix((n,n), dtype=np.float32).tolil()
+    edges = set()
+    while len(edges) < 2*n:
+        a = random.randint(0,n-1)
+        b = random.randint(0,n-1)
+        if a == b:
+            continue
+        if (a,b) in edges:
+            continue
+        adj[a, b] = 1
+        adj[b, a] = 1
+        edges.add((a,b))
+        edges.add((b,a))
+    adj_mtx = adj.tocoo()
+
+    features = sp.eye(n)
+    features = convert_tensor(features)
+
+    labels = torch.LongTensor(np.ones(n))
+    idx_train = [torch.LongTensor([*range(n)])]
+    idx_val = [torch.LongTensor([])]
+    idx_test = [torch.LongTensor([1])]
+    
+    print("Generation finished!")
+    return adj_mtx, features, labels, idx_train, idx_val, idx_test
+
+
+
+        
